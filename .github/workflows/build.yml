@@ -1,14 +1,11 @@
 name: build
 
 on:
-  push:
-    branches: ["*"]
-    pull_request:
   workflow_dispatch:
 
 jobs:
   win:
-    runs-on: windows-2019
+    runs-on: windows-latest
     name: Windows
     steps:
       - uses: actions/checkout@v3
@@ -28,6 +25,9 @@ jobs:
       - name: Build
         shell: msys2 {0}
         run: |
+          export CFLAGS="-march=tigerlake -mprefer-vector-width=512 -O3 -flto=full -mguard=cf -fcf-protection=full -D_WIN32_WINNT=0x0A00 -DWINVER=0x0A00 -fvisibility=hidden -fvirtual-function-elimination -fwhole-program-vtables -fdata-sections -ffunction-sections -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer -fno-emulated-tls -pthread"
+          export CXXFLAGS="$CFLAGS"
+          export LDFLAGS="$CFLAGS -fuse-ld=lld -Wl,-s,-O3,--gc-sections,--icf=all,--no-insert-timestamp,--major-os-version=10,--major-subsystem-version=6,--minor-subsystem-version=2,--file-alignment=4096 -Xlinker -Xlink=-cetcompat -Xlinker -Xlink=-guard:cf,longjmp,ehcont -Xlinker -Xlink=-opt:lldlto=3 -Xlinker -Xlink=-opt:lldltocgo=3"
           mkdir build && cd build
           cmake -DCMAKE_BUILD_TYPE=RELEASE \
             -DCMAKE_SHARED_LINKER_FLAGS="-static" \
@@ -38,7 +38,7 @@ jobs:
           name: debug
           path: build/debug.dll
   linux:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     name: Linux
     steps:
       - uses: actions/checkout@v3
@@ -48,11 +48,16 @@ jobs:
         run: |
           sudo add-apt-repository universe
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake ninja-build git pkg-config libmpv-dev xorg-dev
+          sudo apt-get install -y build-essential cmake ninja-build git pkg-config libmpv-dev xorg-dev clang lld
       - name: Build
         run: |
           mkdir build && cd build
+          export CFLAGS="-march=tigerlake -mprefer-vector-width=512 -O3 -flto=full -fsanitize=scudo -fcf-protection=full -fvisibility=hidden -fvirtual-function-elimination -fwhole-program-vtables -fdata-sections -ffunction-sections -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer -fno-emulated-tls -pthread"
+          export CXXFLAGS="$CFLAGS"
+          export LDFLAGS="$CFLAGS -fuse-ld=lld -Wl,-s,-O3,--gc-sections,--icf=all"
           cmake -DCMAKE_BUILD_TYPE=RELEASE \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
             -G Ninja ..
           cmake --build .
       - uses: actions/upload-artifact@v3
@@ -61,7 +66,7 @@ jobs:
           path: build/debug.so
   publish:
     needs: [win, linux]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     if: ${{ github.ref == 'refs/heads/main' }}
     steps:
       - uses: actions/checkout@v3
